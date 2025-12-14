@@ -153,16 +153,20 @@ defmodule Lab4.Router do
     end
   end
 
-  @impl true
-  def handle_call({:send_msg, peer_username, text}, _from, st) do
-    case Registry.lookup(Lab4.PeerRegistry, peer_username) do
-      [{_pid, session_pid}] ->
-        GenServer.call(session_pid, {:send_chat, peer_username, text})
 
-      [] ->
-        {:reply, {:error, :unknown_peer}, st}
-    end
+@impl true
+def handle_call({:send_msg, peer_username, text}, _from, st) do
+  case Registry.lookup(Lab4.PeerRegistry, peer_username) do
+    [{_owner_pid, session_pid} | _] ->
+      res = GenServer.call(session_pid, {:send_chat, peer_username, text})
+      {:reply, res, st}
+
+    [] ->
+      {:reply, {:error, :unknown_peer}, st}
   end
+end
+
+
 
   @impl true
   def handle_cast({:register_session, pid}, st) do

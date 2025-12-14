@@ -1,147 +1,111 @@
 defmodule Lab4.Xml do
   @moduledoc false
 
-  require Record
+  @doc """
+  Minimal XML helper used by the app. Returns/accepts binaries.
 
-  # Records come from exml include files.
-  Record.defrecord(:xmlel, Record.extract(:xmlel, from_lib: "exml/include/exml.hrl"))
-  Record.defrecord(:xmlcdata, Record.extract(:xmlcdata, from_lib: "exml/include/exml.hrl"))
+  This intentionally avoids any NIFs and uses simple regex-based parsing
+  because the protocol is tiny and well-known.
+  """
 
-  def parse(bin) when is_binary(bin) do
-    :exml.parse(bin)
+  @spec parse(binary()) :: {:ok, binary()} | {:error, any()}
+  def parse(bin) when is_binary(bin), do: {:ok, bin}
+  def parse(_), do: {:error, :not_binary}
+
+  @spec to_binary(binary()) :: binary()
+  def to_binary(bin) when is_binary(bin), do: bin
+
+  ## Elements - return binary strings
+  def stream_start(username) when is_binary(username) do
+    "<stream user=\"#{escape(username)}\" version=\"1.0\"/>"
   end
 
-  def to_binary(term) do
-    :exml.to_binary(term)
+  def handshake(username, key) when is_binary(username) and is_binary(key) do
+    "<handshake user=\"#{escape(username)}\" key=\"#{escape(key)}\"/>"
   end
 
-  ## Elements
-
-  # Pseudo-XMPP stream header, sent once per direction
-  def stream_start(username) do
-    xmlel(
-      name: b("stream"),
-      attrs: [{b("user"), b(username)}, {b("version"), b("1.0")}],
-      children: []
-    )
+  def ok(username) when is_binary(username) do
+    "<ok user=\"#{escape(username)}\"/>"
   end
 
-  def handshake(username, key) do
-    xmlel(
-      name: b("handshake"),
-      attrs: [{b("user"), b(username)}, {b("key"), b(key)}],
-      children: []
-    )
+  def error(reason) when is_binary(reason) do
+    "<error reason=\"#{escape(reason)}\"/>"
   end
 
-  def ok(username) do
-    xmlel(
-      name: b("ok"),
-      attrs: [{b("user"), b(username)}],
-      children: []
-    )
+  def message(from, to, body)
+      when is_binary(from) and is_binary(to) and is_binary(body) do
+    "<message from=\"#{escape(from)}\" to=\"#{escape(to)}\" type=\"chat\"><body>#{escape_cdata(body)}</body></message>"
   end
 
-  def error(reason) do
-    xmlel(
-      name: b("error"),
-      attrs: [{b("reason"), b(reason)}],
-      children: []
-    )
-  end
+  def ping, do: "<ping/>"
+  def pong, do: "<pong/>"
 
-  def message(from, to, body) do
-    xmlel(
-      name: b("message"),
-      attrs: [{b("from"), b(from)}, {b("to"), b(to)}, {b("type"), b("chat")}],
-      children: [
-        xmlel(
-          name: b("body"),
-          attrs: [],
-          children: [xmlcdata(content: b(body))]
-        )
-      ]
-    )
-  end
-
-  def ping do
-    xmlel(
-      name: b("ping"),
-      attrs: [],
-      children: []
-    )
-  end
-
-  def pong do
-    xmlel(
-      name: b("pong"),
-      attrs: [],
-      children: []
-    )
-  end
-
-  ## Classification
-
-  def classify(doc) do
+  ## Classification - analyze raw binary and return same tuples as original code
+  def classify(bin) when is_binary(bin) do
     cond do
-      match?(xmlel(name: <<"stream">>), doc) ->
-        {:stream, get_attr(doc, "user")}
+      Regex.match?(~r/^<stream(\s|>)/, bin) ->
+        {:stream, get_attr(bin, "user")}
 
-      match?(xmlel(name: <<"handshake">>), doc) ->
-        {:handshake, get_attr(doc, "user"), get_attr(doc, "key")}
+      Regex.match?(~r/^<handshake(\s|>)/, bin) ->
+        {:handshake, get_attr(bin, "user"), get_attr(bin, "key")}
 
-      match?(xmlel(name: <<"ok">>), doc) ->
-        {:ok, get_attr(doc, "user")}
+      Regex.match?(~r/^<ok(\s|>)/, bin) ->
+        {:ok, get_attr(bin, "user")}
 
-      match?(xmlel(name: <<"error">>), doc) ->
-        {:error, get_attr(doc, "reason")}
+      Regex.match?(~r/^<error(\s|>)/, bin) ->
+        {:error, get_attr(bin, "reason")}
 
-      match?(xmlel(name: <<"message">>), doc) ->
-        from = get_attr(doc, "from")
-        to = get_attr(doc, "to")
-        body = get_body(doc)
+      Regex.match?(~r/^<message(\s|>)/, bin) ->
+        from = get_attr(bin, "from")
+        to = get_attr(bin, "to")
+        body = get_body(bin)
         {:message, from, to, body}
 
-      match?(xmlel(name: <<"ping">>), doc) ->
+      Regex.match?(~r/^<ping(\s|>)/, bin) ->
         {:ping}
 
-      match?(xmlel(name: <<"pong">>), doc) ->
+      Regex.match?(~r/^<pong(\s|>)/, bin) ->
         {:pong}
 
       true ->
-        {:unknown, doc}
+        {:unknown, bin}
     end
   end
 
   ## Helpers
 
-  defp get_attr(doc, key) do
-    attrs = xmlel(doc, :attrs)
-
-    case Enum.find(attrs, fn {k, _v} -> k == b(key) end) do
-      {_, v} -> to_string(v)
-      nil -> nil
+  defp get_attr(bin, key) do
+    # простая регулярка для attr="value"
+    case Regex.run(~r/#{key}="([^"]*)"/, bin) do
+      [_, v] -> v
+      _ -> nil
     end
   end
 
-  defp get_body(doc) do
-    children = xmlel(doc, :children)
-
-    case Enum.find(children, fn ch -> match?(xmlel(name: <<"body">>), ch) end) do
-      nil ->
-        ""
-
-      body_el ->
-        inner = xmlel(body_el, :children)
-
-        case Enum.find(inner, fn x -> match?(xmlcdata(), x) end) do
-          nil -> ""
-          cdata -> to_string(xmlcdata(cdata, :content))
-        end
+  defp get_body(bin) do
+    # захватываем содержимое между <body>...</body>, s-флаг для многострочности
+    case Regex.run(~r|<body>(.*?)</body>|s, bin) do
+      [_, content] -> unescape_cdata(content)
+      _ -> ""
     end
   end
 
-  defp b(x) when is_binary(x), do: x
-  defp b(x) when is_list(x), do: :unicode.characters_to_binary(x)
-  defp b(x), do: x |> to_string() |> :unicode.characters_to_binary()
+  defp escape(s) when is_binary(s) do
+    s
+    |> String.replace("&", "&amp;")
+    |> String.replace("\"", "&quot;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+  end
+
+  # для текста внутри body мы тоже экранируем минимально
+  defp escape_cdata(s) when is_binary(s), do: escape(s)
+
+  defp unescape_cdata(s) when is_binary(s) do
+    s
+    |> String.replace("&quot;", "\"")
+    |> String.replace("&amp;", "&")
+    |> String.replace("&lt;", "<")
+    |> String.replace("&gt;", ">")
+  end
 end

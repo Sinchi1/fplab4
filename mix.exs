@@ -24,7 +24,7 @@ defmodule Lab4.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
 
       # Erlang XML parser (expat-based), used from Elixir
-      {:exml, git: "https://github.com/paulgray/exml.git"}
+      # {:exml, git: "https://github.com/paulgray/exml.git"}
     ]
   end
 end
