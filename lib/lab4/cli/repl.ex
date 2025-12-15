@@ -10,24 +10,27 @@ defmodule Lab4.CLI.Repl do
   def init(opts) do
     username = Keyword.fetch!(opts, :username)
     st = %{username: username, history: [], last_peer: nil, active_peer: nil}
-    spawn_link(fn -> input_loop(self()) end)
+
+    repl_pid = self()
+    gl = Process.group_leader()
+
+    # Отдельная задача, которая читает stdin и шлет строки в GenServer
+    Task.start_link(fn ->
+      # Важно: IO идет через group leader процесса
+      Process.group_leader(self(), gl)
+
+      IO.stream(:stdio, :line)
+      |> Enum.each(fn line ->
+        send(repl_pid, {:line, String.trim(line)})
+      end)
+
+      # EOF/закрытие stdin
+      send(repl_pid, {:line, "/quit"})
+    end)
+
     IO.puts(help_text())
     prompt(username)
     {:ok, st}
-  end
-
-  defp input_loop(repl_pid) do
-    case IO.gets("") do
-      :eof ->
-        send(repl_pid, {:line, "/quit"})
-
-      {:error, _} ->
-        send(repl_pid, {:line, "/quit"})
-
-      line ->
-        send(repl_pid, {:line, String.trim(line)})
-        input_loop(repl_pid)
-    end
   end
 
   @impl true
@@ -99,8 +102,7 @@ defmodule Lab4.CLI.Repl do
   def handle_info({:incoming, from, body}, st) do
     IO.puts("\n#{from}: #{body}")
 
-    st =
-      %{st | last_peer: from, active_peer: st.active_peer || from}
+    st = %{st | last_peer: from, active_peer: st.active_peer || from}
 
     prompt(st.username)
     {:noreply, st}
@@ -131,6 +133,7 @@ defmodule Lab4.CLI.Repl do
     cond do
       String.starts_with?(line, "/msg ") ->
         rest = String.trim_leading(line, "/msg ")
+
         case String.split(rest, " ", parts: 2) do
           [peer, text] -> {:msg, peer, text}
           _ -> {:unknown, line}
@@ -138,6 +141,7 @@ defmodule Lab4.CLI.Repl do
 
       String.starts_with?(line, "/nick ") ->
         new = String.trim_leading(line, "/nick ") |> String.trim()
+
         if new == "" do
           {:unknown, line}
         else
@@ -146,6 +150,7 @@ defmodule Lab4.CLI.Repl do
 
       String.starts_with?(line, "/use ") ->
         peer = String.trim_leading(line, "/use ") |> String.trim()
+
         if peer == "" do
           {:unknown, line}
         else
@@ -156,7 +161,6 @@ defmodule Lab4.CLI.Repl do
         {:unknown, line}
 
       true ->
-        # Plain text -> send to active/last/only peer
         {:send_default, line}
     end
   end

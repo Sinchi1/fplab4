@@ -64,7 +64,22 @@ defmodule Lab4.CLI do
   defp start_repl(username) do
     {:ok, repl} = Lab4.CLI.Repl.start_link(username: username)
     :ok = Lab4.Router.attach_ui(repl)
-    Process.sleep(:infinity)
+
+    input_loop(repl)
+  end
+
+  defp input_loop(repl_pid) do
+    case IO.gets("") do
+      :eof ->
+        send(repl_pid, {:line, "/quit"})
+
+      {:error, _} ->
+        send(repl_pid, {:line, "/quit"})
+
+      line ->
+        send(repl_pid, {:line, String.trim(line)})
+        input_loop(repl_pid)
+    end
   end
 
   defp usage do
