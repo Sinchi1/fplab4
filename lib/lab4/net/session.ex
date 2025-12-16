@@ -1,5 +1,4 @@
 defmodule Lab4.Net.Session do
-  @moduledoc false
   use GenServer
   require Logger
 
@@ -88,13 +87,24 @@ defmodule Lab4.Net.Session do
     {frames, rest} = Frame.decode(st.buffer)
     st = %{st | buffer: rest}
 
-    st =
-      Enum.reduce(frames, st, fn frame, acc ->
-        handle_frame(frame, acc)
-      end)
+    res =
+  Enum.reduce_while(frames, {:ok, st}, fn frame, {:ok, acc} ->
+    case handle_frame(frame, acc) do
+      {:ok, acc2} -> {:cont, {:ok, acc2}}
+      {:stop, reason, acc2} -> {:halt, {:stop, reason, acc2}}
+    end
+  end)
 
-    :ok = :inet.setopts(st.sock, active: :once)
-    {:noreply, st}
+  case res do
+    {:ok, st} ->
+      _ = :inet.setopts(st.sock, active: :once)
+      {:noreply, st}
+
+    {:stop, reason, st} ->
+      if st.peer_username, do: Lab4.Router.unregister_peer(st.peer_username)
+      Lab4.Router.unregister_session(self())
+      {:stop, reason, st}
+  end
   end
 
   @impl true
@@ -145,68 +155,70 @@ defmodule Lab4.Net.Session do
     {:noreply, %{st | username: new_username}}
   end
 
-  ## Internal
 
-  defp handle_frame(frame, st) do
-    case Xml.parse(frame) do
-      {:ok, doc} ->
-        case Xml.classify(doc) do
-          {:stream, peer_user} ->
-            Logger.debug("Stream header from #{inspect(peer_user)}")
-            touch(st)
+defp handle_frame(frame, st) do
+  case Xml.parse(frame) do
+    {:ok, doc} ->
+      case Xml.classify(doc) do
+        {:stream, peer_user} ->
+          Logger.debug("Stream header from #{inspect(peer_user)}")
+          {:ok, touch(st)}
 
-          {:handshake, peer_user, key} ->
-            st = touch(st)
-            handle_handshake(peer_user, key, st)
+        {:handshake, peer_user, key} ->
+          st = touch(st)
+          handle_handshake(peer_user, key, st)
 
-          {:ok, peer_user} ->
-            st = touch(st)
-            handle_ok(peer_user, st)
+        {:ok, peer_user} ->
+          st = touch(st)
+          {:ok, handle_ok(peer_user, st)}
 
-          {:error, reason} ->
-            Logger.warning("Peer error: #{inspect(reason)}")
-            touch(st)
+        {:error, reason} ->
+          Logger.warning("Peer error: #{inspect(reason)}")
+          {:ok, touch(st)}
 
-          {:message, from, _to, body} ->
-            Lab4.Router.incoming_message(from, body)
-            touch(st)
+        {:message, from, _to, body} ->
+          Lab4.Router.incoming_message(from, body)
+          {:ok, touch(st)}
 
-          {:ping} ->
-            pong = Xml.pong() |> Xml.to_binary()
-            :ok = :gen_tcp.send(st.sock, Frame.encode(pong))
-            touch(st)
+        {:ping} ->
+          pong = Xml.pong() |> Xml.to_binary()
+          _ = :gen_tcp.send(st.sock, Frame.encode(pong))
+          {:ok, touch(st)}
 
-          {:pong} ->
-            touch(st)
+        {:pong} ->
+          {:ok, touch(st)}
 
-          {:unknown, _} ->
-            st
-        end
+        {:unknown, _} ->
+          {:ok, st}
+      end
 
-      {:error, reason} ->
-        Logger.warning("Bad XML frame: #{inspect(reason)}")
-        st
-    end
+    {:error, reason} ->
+      Logger.warning("Bad XML frame: #{inspect(reason)}")
+      {:ok, st}
   end
+end
+
 
   defp handle_handshake(peer_user, key, st) do
     cond do
       st.authed? ->
-        st
+        {:ok, st}
 
       key != st.psk ->
         err = Xml.error("bad-key") |> Xml.to_binary()
         _ = :gen_tcp.send(st.sock, Frame.encode(err))
         _ = :gen_tcp.close(st.sock)
-        st
+        {:stop, {:shutdown, :bad_key}, st}
 
       true ->
         ok = Xml.ok(st.username) |> Xml.to_binary()
-        :ok = :gen_tcp.send(st.sock, Frame.encode(ok))
+        _ = :gen_tcp.send(st.sock, Frame.encode(ok))
         Lab4.Router.register_peer(peer_user, self())
-        %{st | authed?: true, peer_username: peer_user}
+        {:ok, %{st | authed?: true, peer_username: peer_user}}
     end
   end
+
+
 
   defp handle_ok(peer_user, st) do
     if st.authed? do

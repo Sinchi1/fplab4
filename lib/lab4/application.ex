@@ -1,5 +1,4 @@
 defmodule Lab4.Application do
-  @moduledoc false
   use Application
 
   @impl true

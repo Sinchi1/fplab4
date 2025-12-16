@@ -1,12 +1,4 @@
 defmodule Lab4.Xml do
-  @moduledoc false
-
-  @doc """
-  Minimal XML helper used by the app. Returns/accepts binaries.
-
-  This intentionally avoids any NIFs and uses simple regex-based parsing
-  because the protocol is tiny and well-known.
-  """
 
   @spec parse(binary()) :: {:ok, binary()} | {:error, any()}
   def parse(bin) when is_binary(bin), do: {:ok, bin}
@@ -15,7 +7,6 @@ defmodule Lab4.Xml do
   @spec to_binary(binary()) :: binary()
   def to_binary(bin) when is_binary(bin), do: bin
 
-  ## Elements - return binary strings
   def stream_start(username) when is_binary(username) do
     "<stream user=\"#{escape(username)}\" version=\"1.0\"/>"
   end
@@ -40,7 +31,6 @@ defmodule Lab4.Xml do
   def ping, do: "<ping/>"
   def pong, do: "<pong/>"
 
-  ## Classification - analyze raw binary and return same tuples as original code
   def classify(bin) when is_binary(bin) do
     cond do
       Regex.match?(~r/^<stream(\s|>)/, bin) ->
@@ -72,10 +62,9 @@ defmodule Lab4.Xml do
     end
   end
 
-  ## Helpers
 
   defp get_attr(bin, key) do
-    # простая регулярка для attr="value"
+    #  attr="value"
     case Regex.run(~r/#{key}="([^"]*)"/, bin) do
       [_, v] -> v
       _ -> nil
@@ -83,7 +72,6 @@ defmodule Lab4.Xml do
   end
 
   defp get_body(bin) do
-    # захватываем содержимое между <body>...</body>, s-флаг для многострочности
     case Regex.run(~r|<body>(.*?)</body>|s, bin) do
       [_, content] -> unescape_cdata(content)
       _ -> ""
@@ -98,7 +86,7 @@ defmodule Lab4.Xml do
     |> String.replace(">", "&gt;")
   end
 
-  # для текста внутри body мы тоже экранируем минимально
+  #  body
   defp escape_cdata(s) when is_binary(s), do: escape(s)
 
   defp unescape_cdata(s) when is_binary(s) do

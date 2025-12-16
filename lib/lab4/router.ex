@@ -1,5 +1,4 @@
 defmodule Lab4.Router do
-  @moduledoc false
   use GenServer
 
   @type state :: %{
@@ -14,7 +13,6 @@ defmodule Lab4.Router do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
   end
 
-  ## Public API
 
   def attach_ui(pid) when is_pid(pid), do: GenServer.call(__MODULE__, {:attach_ui, pid})
 
@@ -46,7 +44,6 @@ defmodule Lab4.Router do
     GenServer.call(__MODULE__, :identity)
   end
 
-  ## Called by sessions
 
   def register_session(pid) do
     GenServer.cast(__MODULE__, {:register_session, pid})

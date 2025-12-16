@@ -1,5 +1,4 @@
 defmodule Lab4.CLI do
-  @moduledoc false
 
   def main(argv) do
     {:ok, _} = Application.ensure_all_started(:lab4)

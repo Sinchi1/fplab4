@@ -1,11 +1,4 @@
 defmodule Lab4.Net.Frame do
-  @moduledoc """
-  Very small binary framing:
-  [uint32_be length][payload bytes...]
-
-  This avoids ambiguity when reading XML from raw TCP streams.
-  """
-
   @spec encode(binary()) :: binary()
   def encode(payload) when is_binary(payload) do
     <<byte_size(payload)::unsigned-big-32, payload::binary>>

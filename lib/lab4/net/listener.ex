@@ -1,5 +1,4 @@
 defmodule Lab4.Net.Listener do
-  @moduledoc false
   use GenServer
   require Logger
 

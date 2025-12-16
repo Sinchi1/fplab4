@@ -1,5 +1,4 @@
 defmodule Lab4.CLI.Repl do
-  @moduledoc false
   use GenServer
 
   def start_link(opts) do
@@ -14,9 +13,7 @@ defmodule Lab4.CLI.Repl do
     repl_pid = self()
     gl = Process.group_leader()
 
-    # Отдельная задача, которая читает stdin и шлет строки в GenServer
     Task.start_link(fn ->
-      # Важно: IO идет через group leader процесса
       Process.group_leader(self(), gl)
 
       IO.stream(:stdio, :line)
@@ -24,7 +21,6 @@ defmodule Lab4.CLI.Repl do
         send(repl_pid, {:line, String.trim(line)})
       end)
 
-      # EOF/закрытие stdin
       send(repl_pid, {:line, "/quit"})
     end)
 
@@ -96,7 +92,6 @@ defmodule Lab4.CLI.Repl do
     {:noreply, st}
   end
 
-  ## Messages from Router
 
   @impl true
   def handle_info({:incoming, from, body}, st) do
@@ -121,8 +116,6 @@ defmodule Lab4.CLI.Repl do
     prompt(st.username)
     {:noreply, st}
   end
-
-  ## Helpers
 
   defp parse_command("/help"), do: {:help}
   defp parse_command("/history"), do: {:history}
