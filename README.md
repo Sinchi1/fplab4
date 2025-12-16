@@ -25,3 +25,75 @@ P2P чат работающий на TCP, работает как federation, о
 * !"n" - повторить команду из /history
 * /quit - выйти
 
+## Lab4.Application
+Модуль запуска приложения.
+
+Отвечает за:
+- старт дерева процессов (Registry, DynamicSupervisor, Router);
+- единый “корень” для управления жизненным циклом приложения (запуск/остановка).
+
+---
+
+## Lab4.CLI
+CLI‑входная точка (escript). Поддерживает два режима:
+
+### `serve`
+- Парсит ключи
+- Если `--key` не задан, генерирует PSK через `Lab4.PSK`.
+- Вызывает:
+  - `Lab4.Router.configure_identity(username, psk)`
+  - `Lab4.Router.listen(port)`
+- Запускает REPL и прикрепляет его к Router как UI (`attach_ui`).
+
+### `connect`
+- Парсит ключи: `--username/-u`, `--host/-h`, `--port/-p`, `--key/-k`.
+- Конфигурирует identity и вызывает `Lab4.Router.connect(host, port)` для создания исходящей Session.
+
+---
+
+## Lab4.PSK
+Модуль генерации PSK:
+- генерирует 32 крипто‑случайных байта;
+- кодирует в base64url (без padding), чтобы ключ удобно передавать в консоли.
+
+---
+
+## Lab4.Router
+Центральная “нода” приложения, реализована как **GenServer**. 
+
+Отвечает за:
+- хранение текущей identity (`username`, `psk`);
+- запуск listener и исходящих соединений через `DynamicSupervisor.start_child/2`; 
+- отправку событий в UI (`peer_up`, `peer_down`, `incoming`).
+
+---
+
+## Lab4.Xml
+Протокольный модуль: создаёт и распознаёт XML‑сообщения.
+
+Распознавание (`classify/1`) выполнено через regex:
+- определяет тип сообщения (stream/handshake/ok/error/message/ping/pong);
+- извлекает атрибуты и `<body>`.
+
+---
+
+## Lab4.CLI.Repl 
+UI‑процесс, который:
+- читает stdin (через отдельный Task) и отправляет строки себе в mailbox;
+- поддерживает команды:
+  - `/help`, `/peers`, `/msg <peer> <text>`, `/use <peer>`,
+    `/nick <new_username>`, `/history`, `!n`, `/quit`;
+- принимает уведомления от Router.
+
+---
+
+## Lab4.Net.Listener
+TCP listener (GenServer), acceptor‑процесс
+
+Отвечает за:
+- `:gen_tcp.listen(port, opts)` и лог “Listening…”;
+- цикл `accept`:
+  - `:gen_tcp.accept(lsock)` получает новый `sock`;
+  - стартует `Lab4.Net.Session` (role: `:server`) через `DynamicSupervisor.start_child/2`;
+  - передаёт сокет в управление Session через `:gen_tcp.controlling_process(sock, sess_pid)`.
+- После этого listener сразу снова идёт в accept, а Session занимается протоколом.
