@@ -1,21 +1,27 @@
-# Lab4
+# Трусковкий Георгий 4 Лабораторная
 
-**TODO: Add description**
+Концепт:
+P2P чат работающий на TCP, работает как federation, один узел делает serve, другие могут к нему подключиться и обмениваться XML-сообщениями. К минусам концепта относится то, что одновременно общение обеспечивается максимум между двумя пользователями со стороны подключившегося, клиент держащий порт может общаться со всеми peer`ами.
+Обмен проходит с помощью TCP, в payload загружается XML сообщение.
 
-## Installation
+## Ключи:
+* Serve - нужен для создания принимающего peer 
+  * port/p - порт, который занимает peer
+  * key/k - PSK для авторизации, задаётся по желанию пользователя, иначе будет сгенерирован ключ длиной 32 байта
+  * name/n - никнейм который отображается в мессендежере
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `lab4` to your list of dependencies in `mix.exs`:
+* connect - подключение к раздающему peer 
+  * host/h - Ipv4 адрес машины
+  * port/p - порт, на котором работает принимающий peer 
+  * key/k - обязательный PSK необходимый для рукопожатия
+  * name/n - никнейм который отображается в мессендежере
 
-```elixir
-def deps do
-  [
-    {:lab4, "~> 0.1.0"}
-  ]
-end
-```
-
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/lab4>.
+## Команды внутри мессенджера:
+* /help - выводит справку о командах
+* /peers - список подключенных peer`ов
+* /msg "peer" "text" - отправить сообщение подключенному пиру
+* /use "peer" выбрать peer для обмена сообщениями, после команды можно будет писать сообщения без /msg
+* /history - история команд
+* !"n" - повторить команду из /history
+* /quit - выйти
 
